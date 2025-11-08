@@ -216,20 +216,33 @@ def admin_stop():
             correct_answers.append(l)
     else:
         correct_answers = [""] * len(quiz_questions)
-    csv_path = os.path.join(APP_ROOT, f"{code}_results.csv")
-    with open(csv_path, "w", encoding="utf8") as f:
-        header = ["Question No", "Correct Answer"] + [u["username"] for u in users_list]
-        f.write(",".join(header) + "\n")
-        for i, q in enumerate(quiz_questions, start=1):
-            row = [str(i)]
-            corr = correct_answers[i - 1] if i - 1 < len(correct_answers) else ""
-            row.append(corr)
-            for u in users_list:
-                a = answers.get(u["phone"], {}).get(q["id"], "WRONG")
-                if not a:
-                    a = "WRONG"
-                row.append(a)
-            f.write(",".join(row) + "\n")
+    csv_path = os.path.join(APP_ROOT, "results.csv")
+    existing = []
+
+    if os.path.exists(csv_path):
+        with open(csv_path, encoding="utf8") as f:
+            existing = [l.strip() for l in f if l.strip()]
+
+    header = ["Question No", "Correct Answer"] + [u["username"] for u in users_list]
+
+    new_rows = []
+    new_rows.append(",".join(["Quiz Code", code]))
+    new_rows.append(",".join(header))
+
+    for i, q in enumerate(quiz_questions, start=1):
+        row = [str(i)]
+        corr = correct_answers[i - 1] if i - 1 < len(correct_answers) else ""
+        row.append(corr)
+        for u in users_list:
+            a = answers.get(u["phone"], {}).get(q["id"], "WRONG")
+            if not a:
+                a = "WRONG"
+            row.append(a)
+        new_rows.append(",".join(row))
+
+    with open(csv_path, "a", encoding="utf8") as f:
+        f.write("\n".join(new_rows) + "\n\n")
+
     for sid in list(sessions.keys()):
         s = sessions[sid]
         if s.get("quiz_code") == code:
