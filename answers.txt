@@ -1,0 +1,29 @@
+^ Math
+96
+9
+13
+
+^ Science
+Mars
+Carbon dioxide
+Nucleus
+
+^ History
+George Washington
+1945
+Egyptians
+
+^ Geography
+Paris
+Pacific Ocean
+Africa
+
+^ English
+Joyful
+Hot
+Verb
+
+^ Computer
+Central Processing Unit
+Binary
+HyperText Markup Language
