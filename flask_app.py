@@ -223,7 +223,7 @@ def admin_stop():
         with open(csv_path, encoding="utf8") as f:
             existing = [l.strip() for l in f if l.strip()]
 
-    header = ["Question No", "Correct Answer"] + [u["username"] for u in users_list]
+    header = ["Question No", "Correct Answer"] + [u["username"] + "/" + u["phone"] for u in users_list]
 
     new_rows = []
     new_rows.append(",".join(["Quiz Code", code]))
