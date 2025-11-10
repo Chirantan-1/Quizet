@@ -1,239 +1,269 @@
-import requests, time, os
-from kivy.app import App
-from kivy.clock import Clock
-from kivy.uix.boxlayout import BoxLayout
-from kivy.uix.label import Label
-from kivy.uix.textinput import TextInput
-from kivy.uix.button import Button
-from kivy.uix.image import Image
-from kivy.uix.floatlayout import FloatLayout
-from kivy.metrics import dp
-from PIL import Image as PImage
-from kivy.config import Config
-from kivy.core.window import Window
+import flet as ft
+import requests
+import time
+import threading
+import os
 
 SERVER = "https://Quizet.pythonanywhere.com"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+FONT_FILE = os.path.join(BASE_DIR, "assets", "DancingScript-Regular.ttf")
 
-Config.set('graphics', 'resizable', False)
-Config.set('graphics', 'width', '360')
-Config.set('graphics', 'height', '640')
+def main(page: ft.Page):
+    page.title = "Quizet"
+    page.window.full_screen = True
+    page.window.maximized = True
+    page.window.resizable = False
+    page.padding = 0
+    page.margin = 0
+    page.theme_mode = ft.ThemeMode.DARK
+    page.bgcolor = ft.Colors.BLACK
+    page.vertical_alignment = ft.MainAxisAlignment.CENTER
+    page.fonts = {"Dancing": FONT_FILE}
+    page.theme = ft.Theme(font_family="Dancing")
 
-Window.size = (360, 640)
-Window.clearcolor = (0, 0, 0, 1)
+    state = {"session_id": None, "username": None, "phone": None, "token": None, "expiry": 0}
+    stop_timer = threading.Event()
 
-class QuizClient(FloatLayout):
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        if not os.path.exists("bg.png"):
-            w, h = 900, 1600
-            top = (0, 0, 255)
-            bottom = (255, 165, 0)
-            img = PImage.new("RGB", (w, h))
-            for y in range(h):
-                r = int(top[0] + (bottom[0] - top[0]) * y / h)
-                g = int(top[1] + (bottom[1] - top[1]) * y / h)
-                b = int(top[2] + (bottom[2] - top[2]) * y / h)
-                for x in range(w):
-                    img.putpixel((x, y), (r, g, b))
-            img.save("bg.png")
-        self.bg = Image(source="bg.png", allow_stretch=True, keep_ratio=False)
-        self.add_widget(self.bg)
-        self.content = BoxLayout(orientation="vertical", padding=12, spacing=10)
-        self.add_widget(self.content)
-        self.session_id = None
-        self.username = None
-        self.phone = None
-        self.current_q = None
-        self.token = None
-        self.expiry = 0
-        self.time_event = None
-        self.show_login()
+    bg = ft.Image(src=os.path.join(BASE_DIR, "assets", "bg.png"), fit=ft.ImageFit.COVER)
+    overlay = ft.Stack([bg])
+    page.add(overlay)
 
-    def clear(self):
-        self.content.clear_widgets()
+    def resize_bg(e):
+        bg.width = page.window.width or page.width
+        bg.height = page.window.height or page.height
+        page.update()
 
-    def fixed_input(self, hint):
-        t = TextInput(hint_text=hint, multiline=False, size_hint=(1, None), height=dp(40), background_color=(1, 1, 1, 1))
-        t.bind(text=self.adjust_input)
-        return t
+    page.on_resize = resize_bg
+    resize_bg(None)
 
-    def adjust_input(self, instance, value):
-        max_w = self.width * 2
-        instance.width = min(max(len(value) * dp(10), dp(200)), max_w)
+    logo = ft.Image(src=os.path.join(BASE_DIR, "assets", "logo.png"), width=60, height=60, opacity=0.4)
+    title = ft.Text("QUIZET", size=32, weight=ft.FontWeight.BOLD, color="white")
+    content = ft.Column(spacing=10, horizontal_alignment=ft.CrossAxisAlignment.CENTER)
 
-    def fixed_button(self, text, fn):
-        b = Button(text=text, size_hint=(1, None), height=dp(40), background_color=(0, 1, 1, 1))
-        def press_anim(inst):
-            inst.background_color = (0.7, 1, 1, 1)
-            Clock.schedule_once(lambda dt: fn(inst), 0.05)
-        b.bind(on_press=press_anim)
-        return b
+    overlay.controls.append(
+        ft.Container(
+            content=ft.Column([title, logo, content], horizontal_alignment=ft.CrossAxisAlignment.CENTER, alignment=ft.alignment.center),
+            alignment=ft.alignment.center
+        )
+    )
 
-    def show_login(self):
-        self.clear()
-        self.content.add_widget(Label(text="Login (username + phone)", font_size=20))
-        self.user_in = self.fixed_input("username")
-        self.phone_in = self.fixed_input("phone")
-        self.content.add_widget(self.user_in)
-        self.content.add_widget(self.phone_in)
-        self.content.add_widget(self.fixed_button("Login", self.do_login))
+    def clear():
+        content.controls.clear()
+        page.update()
 
-    def do_login(self, *a):
-        u = self.user_in.text.strip()
-        p = self.phone_in.text.strip()
-        if not u or not p:
-            return
-        r = requests.post(SERVER + "/login", json={"username": u, "phone": p})
-        if r.status_code == 200:
-            self.username = u
-            self.phone = p
-            self.show_home()
-        else:
-            self.clear()
-            self.content.add_widget(Label(text="Login failed"))
+    def show_login():
+        clear()
+        user_in = ft.TextField(label="Username", width=260)
+        phone_in = ft.TextField(label="Phone", width=260)
+        msg = ft.Text("", size=18, color="white")
 
-    def show_home(self):
-        self.clear()
-        self.content.add_widget(Label(text=f"Welcome {self.username}", font_size=18))
-        self.content.add_widget(self.fixed_button("Join Quiz", lambda *a: self.show_join()))
-        self.content.add_widget(self.fixed_button("Logout", lambda *a: self.logout()))
-
-    def logout(self):
-        self.session_id = None
-        self.username = None
-        self.phone = None
-        self.show_login()
-
-    def show_join(self):
-        self.clear()
-        self.content.add_widget(Label(text="Enter 6-digit quiz code and 12-char access code", font_size=16))
-        self.code6 = self.fixed_input("6-digit code")
-        self.code12 = self.fixed_input("12-char access code")
-        self.content.add_widget(self.code6)
-        self.content.add_widget(self.code12)
-        self.content.add_widget(self.fixed_button("Join", self.join_quiz))
-        self.content.add_widget(self.fixed_button("Back", lambda *a: self.show_home()))
-        self.msg = Label(text="")
-        self.content.add_widget(self.msg)
-
-    def join_quiz(self, *a):
-        six = self.code6.text.strip()
-        access = self.code12.text.strip()
-        if not six or not access:
-            self.msg.text = "Enter both codes"
-            return
-        payload = {"username": self.username, "phone": self.phone, "quiz_code": six, "access_code": access}
-        r = requests.post(SERVER + "/register", json=payload)
-        if r.status_code == 200:
-            d = r.json()
-            self.session_id = d.get("session_id")
-            self.show_quiz()
-        else:
-            try:
-                self.msg.text = r.json().get("error", "Join failed")
-            except:
-                self.msg.text = "Join failed"
-
-    def show_quiz(self):
-        self.clear()
-        self.q_label = Label(text="Getting question...", font_size=18, halign="center")
-        self.content.add_widget(self.q_label)
-        self.answer_in = self.fixed_input("Type answer")
-        self.content.add_widget(self.answer_in)
-        self.submit_btn = self.fixed_button("Submit", self.submit_answer)
-        self.content.add_widget(self.submit_btn)
-        self.timer_lbl = Label(text="", font_size=16)
-        self.content.add_widget(self.timer_lbl)
-        self.status_lbl = Label(text="", font_size=14)
-        self.content.add_widget(self.status_lbl)
-        self.get_question()
-
-    def get_question(self, *a):
-        r = requests.post(SERVER + "/get_question", json={"session_id": self.session_id})
-        if r.status_code != 200:
-            self.status_lbl.text = "Error fetching question"
-            return
-        d = r.json()
-        if d.get("done"):
-            self.status_lbl.text = "Quiz finished!"
-            Clock.schedule_once(lambda dt: self.show_home(), 1.5)
-            return
-        q = d.get("question")
-        self.current_q = q
-        self.token = d.get("token")
-        self.expiry = d.get("exp", 0)
-        self.q_label.text = q.get("text")
-        self.answer_in.text = ""
-        self.answer_in.disabled = False
-        self.submit_btn.disabled = False
-        self.start_countdown(int(self.expiry - time.time()))
-
-    def start_countdown(self, seconds):
-        if self.time_event:
-            self.time_event.cancel()
-        self.time_event = None
-        self.time_left = max(0, seconds)
-        self.timer_lbl.text = f"Time left: {self.time_left}s"
-        def tick(dt):
-            self.time_left -= 1
-            if self.time_left <= 0:
-                if self.time_event:
-                    self.time_event.cancel()
-                self.timer_lbl.text = "Time's up!"
-                self.answer_in.disabled = True
-                self.submit_btn.disabled = True
-                Clock.schedule_once(lambda dt: self.auto_wrong_submit(), 0.2)
-                return False
-            self.timer_lbl.text = f"Time left: {self.time_left}s"
-            return True
-        self.time_event = Clock.schedule_interval(tick, 1)
-
-    def auto_wrong_submit(self):
-        if not self.current_q:
-            return
-        payload = {"session_id": self.session_id, "answer": "WRONG", "token": self.token}
-        r = requests.post(SERVER + "/submit_answer", json=payload)
-        if r.status_code == 200:
-            d = r.json()
-            if d.get("done"):
-                self.status_lbl.text = "Quiz finished!"
-                Clock.schedule_once(lambda dt: self.show_home(), 1.5)
+        def do_login(e):
+            u = (user_in.value or "").strip()
+            p = (phone_in.value or "").strip()
+            if not u or not p:
+                msg.value = "Enter username and phone"
+                page.update()
                 return
-            Clock.schedule_once(lambda dt: self.get_question(), 1)
-        else:
-            self.status_lbl.text = "Error submitting WRONG"
-
-    def submit_answer(self, *a):
-        if not self.current_q:
-            return
-        ans = self.answer_in.text.strip()
-        if not ans:
-            self.status_lbl.text = "Type an answer"
-            return
-        self.answer_in.disabled = True
-        self.submit_btn.disabled = True
-        if self.time_event:
-            self.time_event.cancel()
-            self.time_event = None
-        payload = {"session_id": self.session_id, "answer": ans, "token": self.token}
-        r = requests.post(SERVER + "/submit_answer", json=payload)
-        if r.status_code != 200:
             try:
-                self.status_lbl.text = r.json().get("error", "Submit failed")
-            except:
-                self.status_lbl.text = "Submit failed"
-            return
-        d = r.json()
-        if d.get("done"):
-            self.status_lbl.text = "Quiz finished!"
-            Clock.schedule_once(lambda dt: self.show_home(), 1.5)
-            return
-        self.status_lbl.text = "Answer recorded"
-        Clock.schedule_once(lambda dt: self.get_question(), 1.2)
+                r = requests.post(SERVER + "/login", json={"username": u, "phone": p}, timeout=10)
+                if r.status_code == 200:
+                    state["username"] = u
+                    state["phone"] = p
+                    show_home()
+                    return
+            except Exception:
+                pass
+            msg.value = "Login failed"
+            page.update()
 
-class QuizApp(App):
-    def build(self):
-        return QuizClient()
+        btn = ft.ElevatedButton("Login", on_click=do_login, width=200)
+        content.controls.extend([
+            ft.Text("Login (username + phone)", size=22),
+            user_in,
+            phone_in,
+            btn,
+            msg
+        ])
+        page.update()
 
-if __name__ == "__main__":
-    QuizApp().run()
+    def show_home():
+        clear()
+        content.controls.append(ft.Text(f"Welcome {state.get('username')}", size=24))
+        content.controls.append(ft.ElevatedButton("Join Quiz", on_click=lambda e: show_join(), width=200))
+        content.controls.append(ft.ElevatedButton("Logout", on_click=lambda e: logout(), width=200))
+        page.update()
+
+    def logout():
+        state.update({"session_id": None, "username": None, "phone": None, "token": None, "expiry": 0})
+        show_login()
+
+    def show_join():
+        clear()
+        code6 = ft.TextField(label="6-digit code", width=260)
+        code12 = ft.TextField(label="12-char access code", width=260)
+        msg = ft.Text("", size=18, color="white")
+
+        def join_quiz(e):
+            six = (code6.value or "").strip()
+            access = (code12.value or "").strip()
+            if not six or not access:
+                msg.value = "Enter both codes"
+                page.update()
+                return
+            payload = {
+                "username": state.get("username"),
+                "phone": state.get("phone"),
+                "quiz_code": six,
+                "access_code": access
+            }
+            try:
+                r = requests.post(SERVER + "/register", json=payload, timeout=10)
+                if r.status_code == 200:
+                    d = r.json()
+                    state["session_id"] = d.get("session_id")
+                    show_quiz()
+                    return
+                else:
+                    try:
+                        msg.value = r.json().get("error", "Join failed")
+                    except Exception:
+                        msg.value = "Join failed"
+            except Exception:
+                msg.value = "Error connecting to server"
+            page.update()
+
+        content.controls.extend([
+            ft.Text("Enter 6-digit quiz code and 12-char code", size=20),
+            code6,
+            code12,
+            ft.ElevatedButton("Join", on_click=join_quiz, width=200),
+            ft.ElevatedButton("Back", on_click=lambda e: show_home(), width=200),
+            msg
+        ])
+        page.update()
+
+    def show_quiz():
+        clear()
+        q_label = ft.Text("Getting question...", size=22, text_align=ft.TextAlign.CENTER)
+        answer_in = ft.TextField(label="Type answer", width=260)
+        submit_btn = ft.ElevatedButton("Submit", width=200)
+        timer_lbl = ft.Text("", size=18)
+        status_lbl = ft.Text("", size=18)
+
+        content.controls.extend([q_label, answer_in, submit_btn, timer_lbl, status_lbl])
+        page.update()
+
+        def get_question():
+            try:
+                r = requests.post(SERVER + "/get_question", json={"session_id": state.get("session_id")}, timeout=10)
+                if r.status_code != 200:
+                    status_lbl.value = "Error fetching question"
+                    page.update()
+                    return
+                d = r.json()
+                if d.get("done"):
+                    status_lbl.value = "Quiz finished!"
+                    page.update()
+                    time.sleep(1.5)
+                    show_home()
+                    return
+                q = d.get("question") or {}
+                state["token"] = d.get("token")
+                state["expiry"] = d.get("exp", 0)
+                q_label.value = q.get("text", "No text")
+                answer_in.value = ""
+                answer_in.disabled = False
+                submit_btn.disabled = False
+                start_countdown(int(state.get("expiry", 0) - time.time()))
+                page.update()
+            except Exception:
+                status_lbl.value = "Error fetching question"
+                page.update()
+
+        def auto_wrong_submit():
+            payload = {"session_id": state.get("session_id"), "answer": "WRONG", "token": state.get("token")}
+            try:
+                r = requests.post(SERVER + "/submit_answer", json=payload, timeout=10)
+                if r.status_code == 200:
+                    d = r.json()
+                    if d.get("done"):
+                        status_lbl.value = "Quiz finished!"
+                        page.update()
+                        time.sleep(1.5)
+                        show_home()
+                        return
+                time.sleep(0.8)
+                get_question()
+                return
+            except Exception:
+                pass
+            status_lbl.value = "Error submitting WRONG"
+            page.update()
+
+        def start_countdown(seconds):
+            stop_timer.clear()
+            def tick():
+                nonlocal seconds
+                while seconds > 0 and not stop_timer.is_set():
+                    timer_lbl.value = f"Time left: {seconds}s"
+                    page.update()
+                    time.sleep(1)
+                    seconds -= 1
+                if not stop_timer.is_set() and seconds <= 0:
+                    timer_lbl.value = "Time's up!"
+                    answer_in.disabled = True
+                    submit_btn.disabled = True
+                    page.update()
+                    auto_wrong_submit()
+            threading.Thread(target=tick, daemon=True).start()
+
+        def submit_answer(e):
+            ans = (answer_in.value or "").strip()
+            if not ans:
+                status_lbl.value = "Type an answer"
+                page.update()
+                return
+            answer_in.disabled = True
+            submit_btn.disabled = True
+            stop_timer.set()
+            payload = {"session_id": state.get("session_id"), "answer": ans, "token": state.get("token")}
+            try:
+                r = requests.post(SERVER + "/submit_answer", json=payload, timeout=10)
+                if r.status_code != 200:
+                    try:
+                        status_lbl.value = r.json().get("error", "Submit failed")
+                    except Exception:
+                        status_lbl.value = "Submit failed"
+                    page.update()
+                    return
+                d = r.json()
+                if d.get("done"):
+                    status_lbl.value = "Quiz finished!"
+                    page.update()
+                    time.sleep(1.5)
+                    show_home()
+                    return
+                status_lbl.value = "Answer recorded"
+                page.update()
+                time.sleep(1.2)
+                get_question()
+                return
+            except Exception:
+                status_lbl.value = "Error submitting answer"
+                page.update()
+
+        submit_btn.on_click = submit_answer
+
+        get_question()
+
+    
+    def bgh():
+        while True:
+            resize_bg(2)
+            page.update()
+            time.sleep(1)
+
+    threading.Thread(target=bgh, daemon=True).start()
+    show_login()
+
+ft.app(target=main)
