@@ -7,6 +7,7 @@ import os
 SERVER = "https://Quizet.pythonanywhere.com"
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 FONT_FILE = os.path.join(BASE_DIR, "assets", "DancingScript-Regular.ttf")
+c = ""
 
 def main(page: ft.Page):
     page.title = "Quizet"
@@ -25,7 +26,7 @@ def main(page: ft.Page):
     stop_timer = threading.Event()
 
     bg = ft.Image(src=os.path.join(BASE_DIR, "assets", "bg.png"), fit=ft.ImageFit.COVER)
-    overlay = ft.Stack([bg])
+    overlay = ft.Stack([bg], expand=True)
     page.add(overlay)
 
     def resize_bg(e):
@@ -42,8 +43,30 @@ def main(page: ft.Page):
 
     overlay.controls.append(
         ft.Container(
-            content=ft.Column([title, logo, content], horizontal_alignment=ft.CrossAxisAlignment.CENTER, alignment=ft.alignment.center),
-            alignment=ft.alignment.center
+            expand=True,
+            alignment=ft.alignment.center,
+            content=ft.Column(
+                [title, logo, content],
+                alignment=ft.MainAxisAlignment.CENTER,
+                horizontal_alignment=ft.CrossAxisAlignment.CENTER
+            )
+        )
+    )
+
+    def toggle_font(e):
+        if e.control.value:
+            page.theme = ft.Theme(font_family="Times New Roman")
+        else:
+            page.theme = ft.Theme(font_family="Dancing")
+        page.update()
+
+    font_switch = ft.Switch(label="Font", value=False, on_change=toggle_font)
+    overlay.controls.append(
+        ft.Container(
+            content=font_switch,
+            alignment=ft.alignment.bottom_right,
+            right=20,
+            bottom=20
         )
     )
 
@@ -104,6 +127,7 @@ def main(page: ft.Page):
         msg = ft.Text("", size=18, color="white")
 
         def join_quiz(e):
+            global c
             six = (code6.value or "").strip()
             access = (code12.value or "").strip()
             if not six or not access:
@@ -121,6 +145,7 @@ def main(page: ft.Page):
                 if r.status_code == 200:
                     d = r.json()
                     state["session_id"] = d.get("session_id")
+                    c = six
                     show_quiz()
                     return
                 else:
@@ -252,7 +277,15 @@ def main(page: ft.Page):
                 status_lbl.value = "Error submitting answer"
                 page.update()
 
+        def handle(e):
+            if e.data == "resume":
+                try:
+                    requests.post(SERVER + "/ping", json={"username": state.get("username"), "code": c}, timeout=5)
+                except:
+                    print("Fail")
+
         submit_btn.on_click = submit_answer
+        page.on_app_lifecycle_state_change = handle
 
         get_question()
 
@@ -262,8 +295,11 @@ def main(page: ft.Page):
             resize_bg(2)
             page.update()
             time.sleep(1)
+        
+
 
     threading.Thread(target=bgh, daemon=True).start()
     show_login()
+    
 
 ft.app(target=main)
