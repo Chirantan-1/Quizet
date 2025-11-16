@@ -21,6 +21,19 @@ results_data = {}
 codes = {}
 users = {}
 
+def clear_file_contents(file_path):
+    if os.path.exists(file_path):
+        try:
+            os.remove(file_path)
+        except OSError:
+            return
+
+    try:
+        with open(file_path, 'w') as f:
+            pass
+    except IOError:
+        pass
+
 def load_json(p):
     if os.path.exists(p):
         with open(p, "r", encoding="utf8") as f:
@@ -170,6 +183,7 @@ def admin_create():
         "sessions": set(),
         "answers": {}
     }
+
     new_codes = []
     for _ in range(count):
         while True:
@@ -216,18 +230,36 @@ def admin_stop():
             correct_answers.append(l)
     else:
         correct_answers = [""] * len(quiz_questions)
+
     csv_path = os.path.join(APP_ROOT, "results.csv")
     existing = []
-
     if os.path.exists(csv_path):
         with open(csv_path, encoding="utf8") as f:
             existing = [l.strip() for l in f if l.strip()]
 
     header = ["Question No", "Correct Answer"] + [u["username"] + "/" + u["phone"] for u in users_list]
 
+    focus_counts = {}
+    focus_file = os.path.join(APP_ROOT, "focus.csv")
+    if os.path.exists(focus_file):
+        with open(focus_file, encoding="utf8") as f:
+            lines = [l.strip().split(",") for l in f if l.strip() and not l.startswith("username")]
+        for u in users_list:
+            name = u["username"]
+            cnt = sum(1 for row in lines if row[0] == name and row[2] == code)
+            focus_counts[name] = cnt
+    else:
+        for u in users_list:
+            focus_counts[u["username"]] = 0
+
     new_rows = []
     new_rows.append(",".join(["Quiz Code", code]))
     new_rows.append(",".join(header))
+
+    fr = ["focus", ""]
+    for u in users_list:
+        fr.append(str(focus_counts[u["username"]]))
+    new_rows.append(",".join(fr))
 
     for i, q in enumerate(quiz_questions, start=1):
         row = [str(i)]
@@ -340,6 +372,32 @@ def submit_answer():
     qid = payload["qid"]
     active_quizzes[six]["answers"][phone][qid] = answer.strip()
     return jsonify({"status": "logged"})
+
+@app.route("/ping", methods=["POST"])
+def ping():
+    j = request.get_json(silent=True) or {}
+    username = j.get("username")
+    code = j.get("code")
+    if not username:
+        return jsonify({"error": "missing"}), 400
+
+    csv_path = os.path.join(APP_ROOT, "focus.csv")
+    line = username + "," + str(int(time.time())) + "," + code
+
+    exists = os.path.exists(csv_path)
+
+    with open(csv_path, "a", encoding="utf8") as f:
+        if not exists:
+            f.write("username,timestamp,code\n")
+        f.write(line + "\n")
+
+    return jsonify({"status": "ok"})
+
+@app.route("/admin/clear", methods=["POST", "GET"])
+def clear():
+    if "admin" not in session:
+        return redirect(url_for("admin_login"))
+    clear_file_contents(os.path.join(APP_ROOT, "focus.csv"))
 
 if __name__ == "__main__":
     save_json(CODES_PATH, codes)
