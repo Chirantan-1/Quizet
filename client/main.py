@@ -8,6 +8,7 @@ SERVER = "https://Quizet.pythonanywhere.com"
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 FONT_FILE = os.path.join(BASE_DIR, "assets", "DancingScript-Regular.ttf")
 c = ""
+foc = 0
 
 def main(page: ft.Page):
     page.title = "Quizet"
@@ -168,6 +169,8 @@ def main(page: ft.Page):
         page.update()
 
     def show_quiz():
+        global foc
+        foc = 0
         clear()
         q_label = ft.Text("Getting question...", size=22, text_align=ft.TextAlign.CENTER)
         answer_in = ft.TextField(label="Type answer", width=260)
@@ -245,9 +248,7 @@ def main(page: ft.Page):
         def submit_answer(e):
             ans = (answer_in.value or "").strip()
             if not ans:
-                status_lbl.value = "Type an answer"
-                page.update()
-                return
+                ans = "WRONG"
             answer_in.disabled = True
             submit_btn.disabled = True
             stop_timer.set()
@@ -276,13 +277,17 @@ def main(page: ft.Page):
             except Exception:
                 status_lbl.value = "Error submitting answer"
                 page.update()
-
+        
         def handle(e):
+            global foc
             if e.data == "resume":
+                foc += 1
                 try:
                     requests.post(SERVER + "/ping", json={"username": state.get("username"), "code": c}, timeout=5)
                 except:
                     print("Fail")
+                if foc >= 2:
+                    show_home()
 
         submit_btn.on_click = submit_answer
         page.on_app_lifecycle_state_change = handle
