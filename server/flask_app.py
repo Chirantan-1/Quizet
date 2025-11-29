@@ -8,18 +8,19 @@ CODES_PATH = os.path.join(APP_ROOT, "codes.json")
 USERS_PATH = os.path.join(APP_ROOT, "users.json")
 RESULTS_PATH = os.path.join(APP_ROOT, "results.json")
 ADMIN_PASSWORD = "admin123"
-SECRET = b"supersecret"
+SECRET = b"lD@_ 3E%Jlz` px?2X)"
 QUESTION_EXPIRY = 15
 ALPHANUM = string.ascii_letters + string.digits
 
 app = Flask(__name__)
-app.secret_key = "quizet_admin_secret"
+app.secret_key = "+6ts9Ev %1it*>*ab|KZMhil3"
 
 active_quizzes = {}
 sessions = {}
 results_data = {}
 codes = {}
 users = {}
+no_code = []
 
 def clear_file_contents(file_path):
     if os.path.exists(file_path):
@@ -132,7 +133,7 @@ def admin_panel():
       <label class="green">Pick quiz:</label>
       <select name="quiz_name">{quiz_opts}</select>
       <label class="green">Number of 12-char access codes:</label>
-      <input type="number" name="count" value="10" min="1">
+      <input type="number" name="count" value="10" min="0">
       <button type="submit">Create Quiz</button>
     </form>
 
@@ -183,6 +184,9 @@ def admin_create():
         "sessions": set(),
         "answers": {}
     }
+    if count == 0:
+        no_code.append(six)
+        return redirect(url_for("admin_panel"))
 
     new_codes = []
     for _ in range(count):
@@ -219,6 +223,10 @@ def admin_stop():
     answers = info["answers"]
     answers_file = os.path.join(APP_ROOT, "answers.txt")
     correct_answers = []
+    try:
+        no_code.remove(code)
+    except:
+        pass
     if os.path.exists(answers_file):
         with open(answers_file, encoding="utf8") as f:
             lines = [l.strip() for l in f if l.strip()]
@@ -312,24 +320,35 @@ def login():
 @app.route("/register", methods=["POST"])
 def register():
     j = request.get_json(silent=True) or {}
-    username = j.get("username"); phone = j.get("phone")
-    six = j.get("quiz_code"); access = j.get("access_code")
-    if not all([username, phone, six, access]):
+    username = j.get("username")
+    phone = j.get("phone")
+    six = j.get("quiz_code")
+    access = j.get("access_code")
+
+    if not all([username, phone, six]):
         return jsonify({"error": "missing_fields"}), 400
     if six not in active_quizzes:
         return jsonify({"error": "invalid_quiz_code"}), 400
-    if access not in codes or six not in codes[access]:
-        return jsonify({"error": "invalid_access_code_for_quiz"}), 400
-    if codes[access][six]["used_by"]:
-        return jsonify({"error": "access_code_already_used"}), 403
+    if six in no_code:
+        pass
+    else:
+        if not access:
+            return jsonify({"error": "missing_access_code"}), 400
+        if access not in codes or six not in codes[access]:
+            return jsonify({"error": "invalid_access_code_for_quiz"}), 400
+        if codes[access][six]["used_by"]:
+            return jsonify({"error": "access_code_already_used"}), 403
+
+        codes[access][six]["used_by"] = username
+        save_json(CODES_PATH, codes)
+
     info = active_quizzes[six]
-    codes[access][six]["used_by"] = username
-    save_json(CODES_PATH, codes)
     sid = secrets.token_hex(16)
     sessions[sid] = {"username": username, "phone": phone, "quiz_code": six, "asked": set()}
     info["joined_users"].append({"username": username, "phone": phone})
     info["answers"][phone] = {}
     info["sessions"].add(sid)
+
     return jsonify({"session_id": sid})
 
 @app.route("/get_question", methods=["POST"])
